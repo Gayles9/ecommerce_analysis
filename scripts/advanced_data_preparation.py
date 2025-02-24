@@ -3,11 +3,15 @@ import numpy as np
 import sqlite3
 from datetime import datetime
 
+#This script loads, and cleans the four CSV files, converts data columns to proper datetime objects, merges the datasets into a unified DataFrame, computes advanced metrics
+#including monthly revenue (with growth rates), average order value, customer segmentation features (total spending, order frequency, recency), and product performance metrics
+#Saves the resulting dataframes into a sqlite database for future analysis
+
 
 # Load Data
 
 
-# Define file paths (adjust if necessary)
+# Define file paths (This can be adjusted)
 orders_path = 'data/olist_orders_dataset.csv'
 order_items_path = 'data/olist_order_items_dataset.csv'
 customers_path = 'data/olist_customers_dataset.csv'

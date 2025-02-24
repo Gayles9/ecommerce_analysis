@@ -1,50 +1,128 @@
-import streamlit as st 
-import pandas as pd 
+import dash
+import dash_core_components as dcc
+import dash_html_components as html
+import dash_bootstrap_components as dbc
+import plotly.express as px
+import pandas as pd
 import sqlite3
-import altair as alt 
+from dash.dependencies import Input, Output
 
-# Function to load data from the database
-@st.cache_data
+# ------------------------------
+# Helper Function to Load Data from SQLite
+# ------------------------------
 def load_data(query):
-    conn = sqlite3.connect('ecommerce.db')
+    """Connects to the SQLite database, executes the query, and returns a DataFrame."""
+    conn = sqlite3.connect('ecommerce_advanced.db')
     df = pd.read_sql_query(query, conn)
     conn.close()
     return df
 
-st.title("E-commerce Sales Analysis Dashboard")
+# ------------------------------
+# Load Data from the Database
+# ------------------------------
+# Monthly Revenue Data
+df_revenue = load_data("SELECT * FROM monthly_revenue")
+# Customer Segmentation Features
+df_customers = load_data("SELECT * FROM customer_features")
+# Product Performance Metrics
+df_products = load_data("SELECT * FROM product_performance")
 
-# Monthly Revenue Chart
-revenue_query = '''
-SELECT 
-    strftime('%Y-%m', o.order_purchase_timestamp) AS month, 
-    SUM(oi.price) AS monthly_revenue
-FROM orders o
-JOIN order_items oi ON o.order_id = oi.order_id
-GROUP BY month
-ORDER BY month;
-'''
-df_revenue = load_data(revenue_query)
+# ------------------------------
+# Create Plotly Figures for Each Analysis
+# ------------------------------
 
-st.subheader("Monthly Revenue Trend")
-chart = alt.Chart(df_revenue).mark_line(point=True).encode(
-    x='month:T',
-    y='monthly_revenue:Q'
-).properties(width=700, height=400)
-st.altair_chart(chart, use_container_width=True)
+# 1. Revenue Overview: Monthly Revenue Trend (Line Chart)
+fig_revenue = px.line(
+    df_revenue, 
+    x='order_month', 
+    y='total_revenue', 
+    markers=True, 
+    title='Monthly Revenue Trend'
+)
+fig_revenue.update_layout(xaxis_title='Month', yaxis_title='Total Revenue')
 
-# Best-Selling Products Chart
-best_sellers_query = '''
-SELECT 
-    oi.product_id, 
-    p.product_category_name, 
-    SUM(oi.price) AS total_sales,
-    COUNT(oi.order_id) AS orders_count
-FROM order_items AS oi
-JOIN products AS p ON oi.product_id = p.product_id
-GROUP BY oi.product_id
-ORDER BY total_sales DESC
-LIMIT 10;
-'''
-df_best = load_data(best_sellers_query)
-st.subheader("Top 10 Best-Selling Products")
-st.dataframe(df_best)
+# Revenue Growth Rate (Bar Chart)
+fig_growth = px.bar(
+    df_revenue, 
+    x='order_month', 
+    y='revenue_growth_rate', 
+    title='Monthly Revenue Growth Rate (%)'
+)
+fig_growth.update_layout(xaxis_title='Month', yaxis_title='Growth Rate (%)')
+
+# 2. Customer Segmentation: Scatter Plot of Order Frequency vs Total Spent
+fig_customers = px.scatter(
+    df_customers, 
+    x='order_frequency', 
+    y='total_spent', 
+    color='recency_days',
+    size='total_spent', 
+    hover_data=['customer_id'],
+    title='Customer Segmentation: Order Frequency vs Total Spent'
+)
+fig_customers.update_layout(xaxis_title='Order Frequency', yaxis_title='Total Spent ($)')
+
+# 3. Product Performance: Bar Chart of Total Sales by Product Category
+fig_products = px.bar(
+    df_products, 
+    x='product_category_name', 
+    y='total_sales', 
+    color='order_count',
+    title='Product Performance by Category'
+)
+fig_products.update_layout(xaxis_title='Product Category', yaxis_title='Total Sales ($)')
+
+# ------------------------------
+# Create the Dash App with Bootstrap for Styling
+# ------------------------------
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app.title = "E-commerce Advanced Analytics Dashboard"
+
+# ------------------------------
+# Layout: Navigation Bar, Tabs, and Content Container
+# ------------------------------
+app.layout = dbc.Container([
+    dbc.NavbarSimple(
+        brand="E-commerce Advanced Analytics Dashboard",
+        brand_href="#",
+        color="primary",
+        dark=True,
+        className="mb-4"
+    ),
+    dbc.Tabs([
+        dbc.Tab(label='Revenue Overview', tab_id='tab-revenue'),
+        dbc.Tab(label='Customer Segmentation', tab_id='tab-customers'),
+        dbc.Tab(label='Product Performance', tab_id='tab-products')
+    ], id='tabs', active_tab='tab-revenue', className="mb-4"),
+    html.Div(id='tab-content', className="p-4")
+], fluid=True)
+
+# ------------------------------
+# Callback to Update Tab Content Based on Active Tab
+# ------------------------------
+@app.callback(Output('tab-content', 'children'),
+              Input('tabs', 'active_tab'))
+def render_tab_content(active_tab):
+    if active_tab == 'tab-revenue':
+        return html.Div([
+            html.H3("Monthly Revenue & Growth"),
+            dcc.Graph(figure=fig_revenue),
+            dcc.Graph(figure=fig_growth)
+        ])
+    elif active_tab == 'tab-customers':
+        return html.Div([
+            html.H3("Customer Segmentation"),
+            dcc.Graph(figure=fig_customers)
+        ])
+    elif active_tab == 'tab-products':
+        return html.Div([
+            html.H3("Product Performance by Category"),
+            dcc.Graph(figure=fig_products)
+        ])
+    return html.Div("No tab selected")
+
+# ------------------------------
+# Run the App
+# ------------------------------
+if __name__ == '__main__':
+    app.run_server(debug=True)
